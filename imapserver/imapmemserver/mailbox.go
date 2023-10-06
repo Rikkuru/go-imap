@@ -274,7 +274,8 @@ func (mbox *Mailbox) NewView() *MailboxView {
 // selected state.
 type MailboxView struct {
 	*Mailbox
-	tracker *imapserver.SessionTracker
+	tracker   *imapserver.SessionTracker
+	searchRes imap.SeqSet
 }
 
 // Close releases the resources allocated for the mailbox view.
@@ -312,23 +313,37 @@ func (mbox *MailboxView) Search(numKind imapserver.NumKind, criteria *imap.Searc
 	mbox.mutex.Lock()
 	defer mbox.mutex.Unlock()
 
-	for _, seqSet := range criteria.SeqNum {
-		mbox.staticSeqSet(seqSet, imapserver.NumKindSeq)
+	matchSearchRes := false
+	processSeqSetList := func(numKind imapserver.NumKind, l []imap.SeqSet) {
+		for i, seqSet := range l {
+			if imap.IsSearchRes(seqSet) {
+				matchSearchRes = true
+				l[i] = imap.SeqSet{}
+			} else {
+				mbox.staticSeqSet(seqSet, numKind)
+			}
+		}
 	}
-	for _, seqSet := range criteria.UID {
-		mbox.staticSeqSet(seqSet, imapserver.NumKindUID)
-	}
+
+	processSeqSetList(imapserver.NumKindSeq, criteria.SeqNum)
+	processSeqSetList(imapserver.NumKindUID, criteria.UID)
 
 	data := imap.SearchData{
 		UID: numKind == imapserver.NumKindUID,
 	}
 
+	var uids imap.SeqSet
 	for i, msg := range mbox.l {
 		seqNum := mbox.tracker.EncodeSeqNum(uint32(i) + 1)
 
 		if !msg.search(seqNum, criteria) {
 			continue
 		}
+		if matchSearchRes && !mbox.searchRes.Contains(msg.uid) {
+			continue
+		}
+
+		uids.AddNum(msg.uid)
 
 		var num uint32
 		switch numKind {
@@ -348,6 +363,10 @@ func (mbox *MailboxView) Search(numKind imapserver.NumKind, criteria *imap.Searc
 			data.Max = num
 		}
 		data.Count++
+	}
+
+	if options.ReturnSave {
+		mbox.searchRes = uids
 	}
 
 	return &data, nil
@@ -381,7 +400,12 @@ func (mbox *MailboxView) forEach(numKind imapserver.NumKind, seqSet imap.SeqSet,
 func (mbox *MailboxView) forEachLocked(numKind imapserver.NumKind, seqSet imap.SeqSet, f func(seqNum uint32, msg *message)) {
 	// TODO: optimize
 
-	mbox.staticSeqSet(seqSet, numKind)
+	if imap.IsSearchRes(seqSet) {
+		numKind = imapserver.NumKindUID
+		seqSet = mbox.searchRes
+	} else {
+		mbox.staticSeqSet(seqSet, numKind)
+	}
 
 	for i, msg := range mbox.l {
 		seqNum := uint32(i) + 1
