@@ -19,7 +19,7 @@ import (
 
 type message struct {
 	// immutable
-	uid uint32
+	uid imap.UID
 	buf []byte
 	t   time.Time
 

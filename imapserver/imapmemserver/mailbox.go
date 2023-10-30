@@ -22,7 +22,7 @@ type Mailbox struct {
 	name       string
 	subscribed bool
 	l          []*message
-	uidNext    uint32
+	uidNext    imap.UID
 }
 
 // NewMailbox creates a new mailbox.

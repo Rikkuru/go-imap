@@ -639,7 +639,7 @@ func (c *Client) readResponseTagged(tag, typ string) (startTLS *startTLSCommand,
 				return nil, fmt.Errorf("in resp-code-apnd: %v", c.dec.Err())
 			}
 			if cmd, ok := cmd.(*AppendCommand); ok {
-				cmd.data.UID = uid
+				cmd.data.UID = imap.UID(uid)
 				cmd.data.UIDValidity = uidValidity
 			}
 		case "COPYUID":
@@ -761,7 +761,7 @@ func (c *Client) readResponseData(typ string) error {
 					return c.dec.Err()
 				}
 				if cmd := findPendingCmdByType[*SelectCommand](c); cmd != nil {
-					cmd.data.UIDNext = uidNext
+					cmd.data.UIDNext = imap.UID(uidNext)
 				}
 			case "UIDVALIDITY":
 				var uidValidity uint32
